@@ -1,0 +1,49 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# venv / uv
+.venv/
+.python-version
+
+# env files
+.env
+.env.*
+!.env.example
+
+# testing
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+test.db
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+
+# redis (local dev artifacts)
+dump.rdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# logs
+*.log
+
+# uploaded files and their temporary chunks (files module)
+data/
+
+# docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+
+# AI agent scratch/planning artifacts (never committed)
+.claude/

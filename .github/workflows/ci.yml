@@ -1,0 +1,314 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - run: uv run mypy src
+
+  arch-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - run: uv run lint-imports
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - run: uv run pytest
+        env:
+          REDIS_URL: redis://localhost:6379/0
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  test-postgres:
+    # The `test` job runs on SQLite: fast and service-free, but SQLite enforces neither
+    # foreign keys nor column lengths, and its driver has no per-event-loop connection
+    # pool, so a whole class of production failures is invisible there. This job runs
+    # the same suite on the database we ship on, and checks the migrations too.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine # same major version as docker-compose.yml
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fastkern_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Read by both Alembic and pytest (pyproject only sets a SQLite *default*). The
+      # database name must have a "test" part (fastkern_test): tests/conftest.py
+      # drops every table when the session ends and refuses any other name.
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/fastkern_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-not-for-production
+      ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - name: Migrations apply cleanly
+        run: uv run alembic upgrade head
+      - name: Models and migrations agree
+        run: uv run alembic check
+      # `alembic check` cannot see triggers, and the test suite builds its schema with
+      # create_all() (which adds them), so this is what catches a migration that forgot
+      # the updated_at trigger for a new table.
+      - name: Every table with updated_at has its trigger
+        run: uv run python scripts/check_updated_at_triggers.py
+      - name: Migrations reverse cleanly
+        run: uv run alembic downgrade base
+      # The suite builds its own schema (Base.metadata.create_all) on the now-empty database.
+      - name: Tests on Postgres
+        run: |
+          # pipefail: without it the step's status would be `tee`'s, and failing tests would pass.
+          set -o pipefail
+          uv run pytest -rs 2>&1 | tee pytest-postgres.log
+      # Several tests only make sense on Postgres (concurrent writes, the updated_at trigger) and
+      # `skipif` themselves elsewhere. If this job ever ran them against the wrong database they
+      # would skip *silently* and go green: fail instead.
+      - name: No Postgres-only test was skipped
+        run: |
+          if grep -E '^SKIPPED .*Postgres' pytest-postgres.log; then
+            echo "::error::Postgres-only tests were skipped on the Postgres job"
+            exit 1
+          fi
+
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # gitleaks-action diffs across the PR's commit range;
+          # the default shallow clone doesn't have that history available.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      # Fails the build on any known vulnerability in a runtime dependency. To accept one
+      # deliberately, add `--ignore-vuln <ID>` here with a comment saying why. `--no-emit-project`:
+      # the project itself isn't on PyPI, and `--strict` fails on anything it can't audit.
+      - run: uvx pip-audit --strict -r <(uv export --no-dev --no-hashes --no-emit-project)
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, test-postgres, pre-commit]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true # into the local daemon, so the scan below sees the exact image built here
+          tags: fastkern:ci
+          target: runtime
+      # pip-audit (pre-commit job) covers the Python dependencies; this covers the OS packages and
+      # anything else in the image. `--ignore-unfixed`: a CVE Debian has no fix for yet can't be
+      # acted on here -- Dependabot proposes the new base-image digest once the fix ships. To accept
+      # a fixable one deliberately, add it to a `.trivyignore` with a comment saying why.
+      - name: Scan image for fixable HIGH/CRITICAL CVEs
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+          image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+          fastkern:ci
+      # Catches a broken compose file (including the dev override) before the e2e job boots it.
+      # `develop.watch` needs Docker Compose 2.32.0+; if the runner's Compose is older, this step fails.
+      - name: Create .env from the template
+        run: cp .env.example .env
+      - name: Validate compose files
+        run: |
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+
+  docker-e2e:
+    # `docker-build` only BUILDS the image; nothing above ever RAN it, which is how a Dockerfile
+    # whose venv shebangs pointed at a directory that doesn't exist in the runtime image (so
+    # neither alembic, celery nor uvicorn could start) got through green. This boots the real
+    # stack from docker-compose, seeds it, and drives it over HTTP.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Throwaway, CI-only value: the seed script refuses the public default in production, and
+      # the e2e tests read the same variable to log in as the seeded accounts.
+      SEED_DEFAULT_PASSWORD: ci-e2e-Seed-Passw0rd-not-a-secret
+      COMPOSE_E2E: docker compose -f docker-compose.yml -f docker-compose.e2e.yml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - name: Create .env from the template
+        run: cp .env.example .env
+      # docker-compose.yml already runs mailpit as part of the stack (publishing 1025/8025 to
+      # the runner), and the api/worker reach it via host.docker.internal:1025 — no separate
+      # mail catcher container needed here. Starting one manually used to be required before
+      # mailpit became a compose service; doing both now fights over the same host ports.
+      - name: Start the stack
+        run: $COMPOSE_E2E up -d --build
+      - name: Wait for /readyz
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/readyz >/dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::stack did not become ready"
+          $COMPOSE_E2E logs
+          exit 1
+      - name: Every service is healthy
+        run: |
+          # The worker used to be permanently `unhealthy` (it inherited the API's HTTP healthcheck).
+          for i in $(seq 1 30); do
+            if [ -z "$($COMPOSE_E2E ps --format '{{.Health}}' | grep -v healthy | grep -v '^$')" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          $COMPOSE_E2E ps
+          exit 1
+      - name: Seed
+        run: $COMPOSE_E2E --profile tools run --rm -e SEED_DEFAULT_PASSWORD seed
+      - name: E2E (general suite)
+        run: make e2e
+      - name: E2E (rate limits, tiny limits)
+        run: make e2e-ratelimit
+      - name: E2E (Redis / database outages)
+        run: make e2e-destructive
+      - name: Stack logs on failure
+        if: failure()
+        run: $COMPOSE_E2E logs --no-color > stack-logs.txt 2>&1 || true
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-stack-logs
+          path: stack-logs.txt
+      - name: Tear down
+        if: always()
+        run: $COMPOSE_E2E down -v
+
+  docker-e2e-clamav:
+    # The real clamd, not a fake server: a separate stack with the clamav profile and
+    # MALWARE_SCAN_BACKEND=clamav. The clamav/clamav image is amd64-only, so this cannot run on
+    # arm64 developer machines; ubuntu-latest is amd64.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SEED_DEFAULT_PASSWORD: ci-e2e-Seed-Passw0rd-not-a-secret
+      COMPOSE_E2E: docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile clamav
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --all-groups
+      - name: Create .env from the template and enable ClamAV
+        run: |
+          cp .env.example .env
+          sed -i 's/^MALWARE_SCAN_BACKEND=none/MALWARE_SCAN_BACKEND=clamav/' .env
+          grep -q '^MALWARE_SCAN_BACKEND=clamav' .env
+      - name: Start the stack with clamav
+        run: $COMPOSE_E2E up -d --build
+      - name: Wait for /readyz
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/readyz >/dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::stack did not become ready"
+          $COMPOSE_E2E logs
+          exit 1
+      - name: Seed
+        run: $COMPOSE_E2E --profile tools run --rm -e SEED_DEFAULT_PASSWORD seed
+      - name: E2E (real ClamAV)
+        run: make e2e-clamav
+      - name: Stack logs on failure
+        if: failure()
+        run: $COMPOSE_E2E logs --no-color > stack-logs.txt 2>&1 || true
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-clamav-stack-logs
+          path: stack-logs.txt
+      - name: Tear down
+        if: always()
+        run: $COMPOSE_E2E down -v

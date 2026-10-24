@@ -1,0 +1,15 @@
+# Layered on docker-compose.yml by `make e2e` (and the CI docker-e2e job):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d api worker
+#
+# The general end-to-end suite makes hundreds of API calls -- and dozens of register/login
+# calls -- from a single IP, which the default limits (10/min on the auth tier, 300/min per IP)
+# would throttle. This lifts them. The rate-limit behaviour itself is tested separately against
+# deliberately LOW limits: see docker-compose.e2e-ratelimit.yml.
+services:
+  api:
+    environment:
+      RATE_LIMIT_IP: 100000/minute
+      RATE_LIMIT_DEFAULT: 100000/minute
+      RATE_LIMIT_AUTH: 100000/minute
+      RATE_LIMIT_WRITE: 100000/minute

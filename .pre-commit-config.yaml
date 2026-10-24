@@ -1,0 +1,56 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (uv run, project env + plugins)
+        entry: uv run mypy src
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: import-linter
+        name: import-linter (Clean Architecture boundaries)
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      # Comments and docstrings explain the reason themselves instead of pointing at an ADR:
+      # the code has to make sense on its own. Docs (README, CLAUDE.md, docs/) may link ADRs.
+      - id: no-adr-references
+        name: no ADR references in code comments
+        language: pygrep
+        entry: '\bADRs?\b|docs/adr'
+        args: [--ignore-case]
+        files: '^(src|tests|scripts|migrations)/|^\.env\.example$|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
+
+      # Same reason: CLAUDE.md is instructions for AI coding agents, not project documentation,
+      # so code states the rule itself instead of pointing at it.
+      - id: no-claude-md-references
+        name: no CLAUDE.md references in code comments
+        language: pygrep
+        entry: 'CLAUDE\.md'
+        files: '^(src|tests|scripts|migrations)/|^\.env\.example$|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

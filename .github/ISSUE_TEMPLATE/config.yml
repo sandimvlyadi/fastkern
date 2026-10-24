@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/sandimvlyadi/fastkern/security/advisories/new
+    about: Please report security vulnerabilities privately. See SECURITY.md.
+  - name: Questions & Discussions
+    url: https://github.com/sandimvlyadi/fastkern/discussions
+    about: Ask questions and discuss ideas with the community.

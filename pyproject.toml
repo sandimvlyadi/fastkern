@@ -1,0 +1,448 @@
+[project]
+name = "fastkern"
+version = "0.2.0"
+description = "Enterprise-grade FastAPI boilerplate: modular monolith, clean architecture, production-ready."
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = { text = "MIT" }
+# Lower bounds are the versions the suite was last verified against, so a fresh resolve can't
+# drift back to an older release with a known CVE. `uv lock --upgrade` moves the lockfile past them.
+dependencies = [
+    "fastapi>=0.161.1,<1.0",
+    "uvicorn[standard]>=0.54.0",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.1",
+    "sqlalchemy[asyncio]>=2.1.6",
+    "asyncpg>=0.32.0",
+    "alembic>=1.20.1",
+    # Capped below 6.5 by kombu (Celery's transport), so 6.4.x is the newest that resolves.
+    "redis>=6.4.0",
+    "celery[redis]>=5.6.3",
+    "pyjwt>=2.15.1",
+    "argon2-cffi>=25.1.0",
+    "structlog>=26.1.0",
+    "opentelemetry-api>=1.45.1",
+    "opentelemetry-sdk>=1.45.1",
+    "opentelemetry-instrumentation-fastapi>=0.66b1",
+    "opentelemetry-instrumentation-sqlalchemy>=0.66b1",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.1",
+    "prometheus-fastapi-instrumentator>=8.1.0",
+    "prometheus-client>=0.26.0",  # rate limiter's own metrics (already a dependency of the above)
+    "httpx>=0.28.1",
+    "tenacity>=9.2.1",
+    "babel>=2.18.0",
+    "python-multipart>=0.0.32",
+    "email-validator>=2.3.0",
+    "limits[redis]>=5.8.0",
+    "python-dotenv>=1.2.4",
+    "pillow>=13.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.2",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-env>=1.8.1",
+    "polyfactory>=3.5.0",
+    "import-linter>=2.15",
+    "pre-commit>=4.7.0",
+    "types-redis>=4.6",
+    "aiosqlite>=0.22.1",
+    "faker>=40.43.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app"]
+
+# ---------------------------------------------------------------------------
+# Ruff (lint + format)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+# Agent tooling (plans, QA harness scratch scripts), not project source.
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",      # pycodestyle / pyflakes
+    "I",                 # isort
+    "UP",                # pyupgrade
+    "B",                 # flake8-bugbear
+    "C4",                # comprehensions
+    "SIM",               # simplify
+    "RUF",               # ruff-specific
+    "ASYNC",             # async pitfalls
+    "N",                 # pep8-naming
+    "S",                 # bandit (security)
+    "TID",               # tidy imports (block relative imports)
+]
+ignore = [
+    "S101",  # assert allowed in tests
+    "B008",  # FastAPI's Depends()-in-default-argument is the idiomatic DI pattern
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+# e2e tests drive `docker compose` with fixed argument lists (no untrusted input).
+"tests/e2e/**" = ["S603", "S607"]
+"src/app/**/infrastructure/models.py" = ["N815"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.14"
+mypy_path = "src"
+explicit_package_bases = true
+strict = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "kombu.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+env = [
+    "ENVIRONMENT=test",
+    # "D:" = default only: an exported DATABASE_URL wins, so CI can run the same suite
+    # on Postgres (SQLite doesn't enforce foreign keys or column lengths). The schema
+    # fixture in tests/conftest.py refuses any non-SQLite database without a "test" part in its name.
+    "D:DATABASE_URL=sqlite+aiosqlite:///./test.db",
+    "SECRET_KEY=test-secret-key-not-for-production",
+    # Every test client is 127.0.0.1, so a shared Redis bucket would 429 the
+    # suite at random; tests/integration/test_rate_limit.py opts back in with
+    # an in-memory limiter via `dependency_overrides[get_rate_limiter]`.
+    "RATE_LIMIT_ENABLED=false",
+]
+# `-m "not e2e"`: tests/e2e drive a RUNNING docker-compose stack, so the default run skips them.
+# `make e2e` / `make e2e-ratelimit` / `make e2e-destructive` pass their own `-m`.
+addopts = "-ra -m 'not e2e' --cov=src/app --cov-report=term-missing:skip-covered --cov-report=xml"
+markers = [
+    "e2e: end-to-end test against a running stack (excluded from the default run; `make e2e`)",
+    "e2e_ratelimit: needs the stack started with LOW rate limits (`make e2e-ratelimit`)",
+    "e2e_destructive: stops/starts stack containers (`make e2e-destructive`)",
+    "e2e_clamav: needs the clamav profile and MALWARE_SCAN_BACKEND=clamav (`make e2e-clamav`)",
+]
+
+[tool.coverage.run]
+source = ["src/app"]
+omit = ["src/app/main.py"]
+# SQLAlchemy's async support bridges every awaited DB call through a
+# greenlet switch (`greenlet_spawn`/`await_only`). Without "greenlet" here, coverage's
+# default sys.settrace-based tracer silently drops line hits for code that
+# runs immediately after such a switch, undercounting real coverage on
+# every repository/use-case/router that awaits a DB call.
+# "thread" is also required, not just the implicit default: listing any concurrency
+# backend here replaces coverage.py's default (threads-only) tracing rather than adding
+# to it, so code run via `asyncio.to_thread` (e.g. a Celery task invoked from a test —
+# see `tests/integration/test_users_avatar.py`) was silently going untraced without it.
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+fail_under = 95
+precision = 2
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "@(abc\\.)?abstractmethod",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------------------
+# import-linter — enforces Clean Architecture dependency rule per module
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Within each module, layers only depend inward (presentation -> infrastructure -> application -> domain)"
+type = "layers"
+containers = [
+    "app.modules.auth",
+    "app.modules.users",
+    "app.modules.roles",
+    "app.modules.audit_log",
+    "app.modules.notifications",
+    "app.modules.tenants",
+    "app.modules.master_examples",
+    "app.modules.examples",
+    "app.modules.files",
+    "app.modules.posts",
+    "app.modules.api_clients",
+]
+layers = ["presentation", "infrastructure", "application", "domain"]
+
+[[tool.importlinter.contracts]]
+name = "Domain layer must be framework-independent"
+type = "forbidden"
+source_modules = ["app.modules.*.domain"]
+forbidden_modules = ["fastapi", "sqlalchemy", "redis", "celery", "httpx"]
+
+# One contract per module: its own domain/application/presentation layers
+# (deliberately NOT its own infrastructure, which legitimately builds its
+# own repositories) must never import another module's infrastructure.
+# Cross-module repository access goes through a port + `app/core/di.py`.
+
+[[tool.importlinter.contracts]]
+name = "auth must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.auth.domain", "app.modules.auth.application", "app.modules.auth.presentation"]
+forbidden_modules = [
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+# `app.core.di` is the sanctioned composition root: it legitimately imports
+# every module's infrastructure, so a chain that only reaches another
+# module's infrastructure THROUGH it doesn't count as this module reaching
+# in directly. A direct import (bypassing `core.di`) still breaks this contract.
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "users must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.users.domain", "app.modules.users.application", "app.modules.users.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "roles must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.roles.domain", "app.modules.roles.application", "app.modules.roles.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "audit_log must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = [
+    "app.modules.audit_log.domain",
+    "app.modules.audit_log.application",
+    "app.modules.audit_log.presentation",
+]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "notifications must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = [
+    "app.modules.notifications.domain",
+    "app.modules.notifications.application",
+    "app.modules.notifications.presentation",
+]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "tenants must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = [
+    "app.modules.tenants.domain",
+    "app.modules.tenants.application",
+    "app.modules.tenants.presentation",
+]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "master_examples must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.master_examples.domain", "app.modules.master_examples.application", "app.modules.master_examples.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "examples must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.examples.domain", "app.modules.examples.application", "app.modules.examples.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "files must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.files.domain", "app.modules.files.application", "app.modules.files.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "posts must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.posts.domain", "app.modules.posts.application", "app.modules.posts.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+[[tool.importlinter.contracts]]
+name = "api_clients must not import other modules' infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.api_clients.domain", "app.modules.api_clients.application", "app.modules.api_clients.presentation"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]
+
+# `partners` is presentation-only (no layers of its own, so it is not in the layers contract above)
+# and reuses many modules' use cases and schemas, so it must reach their repositories only through
+# `core/di.py`, never by importing their infrastructure.
+[[tool.importlinter.contracts]]
+name = "partners must not import any module's infrastructure"
+type = "forbidden"
+source_modules = ["app.modules.partners"]
+forbidden_modules = [
+    "app.modules.auth.infrastructure",
+    "app.modules.users.infrastructure",
+    "app.modules.roles.infrastructure",
+    "app.modules.audit_log.infrastructure",
+    "app.modules.notifications.infrastructure",
+    "app.modules.tenants.infrastructure",
+    "app.modules.master_examples.infrastructure",
+    "app.modules.examples.infrastructure",
+    "app.modules.files.infrastructure",
+    "app.modules.posts.infrastructure",
+    "app.modules.api_clients.infrastructure",
+]
+ignore_imports = ["app.core.di -> app.modules.*.infrastructure.*"]

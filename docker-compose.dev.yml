@@ -1,0 +1,37 @@
+# Layered on docker-compose.yml by `make docker-dev`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --watch
+#
+# Hot reload for the whole stack, the Docker counterpart of `make dev`:
+#   - api:    the source tree is bind-mounted and uvicorn runs with --reload, so code edits apply
+#             without a rebuild.
+#   - worker, beat: Celery has no autoreload, so compose `watch` restarts them when src/ changes.
+#
+# Dependency changes (pyproject.toml, uv.lock) are not rebuilt while `watch` runs. Restart with
+# `make docker-dev`, which builds with `--build`.
+# db, redis and mailpit come unchanged from docker-compose.yml. The environment is inherited from the
+# x-app-environment anchor there, so containers still reach db/redis by service name.
+services:
+  api:
+    # Keeps the alembic step from docker-compose.yml; `--reload-dir src` stops the watcher from
+    # scanning /app/.venv. Repeat this line here if the base command changes.
+    command: >
+      sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src"
+    volumes:
+      - ./src:/app/src:ro
+
+  worker:
+    volumes:
+      - ./src:/app/src:ro
+    develop:
+      watch:
+        - action: restart
+          path: ./src
+
+  beat:
+    volumes:
+      - ./src:/app/src:ro
+    develop:
+      watch:
+        - action: restart
+          path: ./src

@@ -1,0 +1,15 @@
+# Layered on docker-compose.yml by `make e2e-ratelimit`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e-ratelimit.yml up -d api worker
+#
+# Deliberately LOW limits so the rate-limit tests trip each tier with a handful of requests.
+# tests/e2e/test_rate_limit.py reads the same numbers (E2E_RATE_LIMIT_AUTH / _DEFAULT / _WRITE,
+# defaulting to the values below), so change them together. The per-IP tier stays high: it
+# counts every API call the test process makes, and would throttle the tests themselves.
+services:
+  api:
+    environment:
+      RATE_LIMIT_IP: 1000/minute
+      RATE_LIMIT_DEFAULT: 20/minute
+      RATE_LIMIT_AUTH: 5/minute
+      RATE_LIMIT_WRITE: 5/minute

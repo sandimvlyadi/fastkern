@@ -1,0 +1,45 @@
+name: Question / Support
+description: Ask a question about using, configuring, or extending the project.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a question, please check the README, the guides in docs/, the ADRs, and existing issues/discussions.
+
+        Do not include secrets, credentials, access tokens, or private information.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Clearly describe what you are trying to accomplish and what you are unsure about.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide the relevant architecture, configuration, code, or steps you have already tried.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error / Output
+      description: Include relevant error output when applicable. Remove secrets and private information.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / Commit
+      description: Provide the affected release, tag, or commit SHA if relevant.
+    validations:
+      required: false

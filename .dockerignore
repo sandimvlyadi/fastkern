@@ -1,0 +1,22 @@
+# Keep the build context (and anything COPY'd from it) free of local state and secrets.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.import_linter_cache
+.coverage
+htmlcov
+coverage.xml
+test.db
+data
+docs
+tests
+.claude
+.vscode

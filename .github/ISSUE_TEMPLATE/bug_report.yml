@@ -1,0 +1,95 @@
+name: Bug Report
+description: Report a reproducible problem or unexpected behavior.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug.
+
+        Please search existing issues first and provide enough information for the problem to be reproduced.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Clearly describe the problem and what you expected to happen.
+      placeholder: What happened, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Provide the smallest reliable set of steps that reproduces the problem.
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Call ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Output
+      description: Include relevant logs or stack traces. Remove secrets and personal information.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / Commit
+      description: Provide the affected release, tag, or commit SHA.
+      placeholder: v1.0.0 or abc1234
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Local development
+        - Docker Compose
+        - Staging
+        - Production
+        - CI
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Relevant Configuration
+      description: Include relevant non-secret configuration or environment details.
+      placeholder: Python version, database version, Redis version, OS, deployment mode, etc.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add screenshots, related issues, links, or anything else useful.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed secrets, credentials, tokens, and private information from this report.
+          required: true
+        - label: I have provided enough information to reproduce the issue.
+          required: true

@@ -1,0 +1,10 @@
+# Repo-specific secret patterns, on top of gitleaks' built-in rules. Read by both the
+# pre-commit hook and the CI gitleaks job.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "partner-api-key"
+description = "Partner API key issued by the api_clients module (see its domain/hashing.py)"
+regex = '''\bpak_[A-Za-z0-9_-]{43}'''
+keywords = ["pak_"]

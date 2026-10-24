@@ -1,0 +1,169 @@
+# Container-network endpoints shared by every service built from the app image.
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/fastkern
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/1
+  CELERY_RESULT_BACKEND: redis://redis:6379/2
+  # The `mailpit` service below publishes 1025/8025 to the host, so host.docker.internal
+  # reaches it the same way it would reach a mailpit you started separately — see README.
+  EMAIL_BACKEND: smtp
+  SMTP_HOST: host.docker.internal
+  SMTP_PORT: "1025"
+  SMTP_STARTTLS: "false"
+
+services:
+  api:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment: *app-environment
+    # Resolves host.docker.internal on Linux too (Docker Desktop already provides it).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Uploaded files live here; api, worker and beat must all see the same volume.
+    volumes:
+      - files_data:/app/data
+    command: >
+      sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    build:
+      context: .
+      target: runtime
+    env_file: .env
+    environment: *app-environment
+    # Resolves host.docker.internal on Linux too (Docker Desktop already provides it).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - files_data:/app/data
+    command: celery -A app.core.celery_app worker --loglevel=info
+    # The image's HEALTHCHECK probes the API's /healthz; a worker serves no HTTP, so ping it
+    # through the broker instead (inspect ping -d targets only this container's node).
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A app.core.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # Periodic jobs (files cleanup). Run exactly one beat per deployment.
+  beat:
+    build:
+      context: .
+      target: runtime
+    env_file: .env
+    environment: *app-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - files_data:/app/data
+    # The schedule file goes to /tmp: the app user cannot write into /app.
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    # The image's HEALTHCHECK probes the API's /healthz, and beat serves no HTTP. Instead, check that
+    # a `celery ... beat` process is running. The pattern uses NUL bytes between argv entries, so the
+    # healthcheck's own command line does not match it.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import glob,sys; sys.exit(0 if any(b'celery\x00-A\x00app.core.celery_app\x00beat' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)"
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # Optional malware scanner, only for MALWARE_SCAN_BACKEND=clamav (off by default):
+  #   docker compose --profile clamav up -d clamav
+  clamav:
+    profiles: ["clamav"]
+    image: clamav/clamav:1.5.4
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # One-shot ops container, off by default:
+  #   docker compose --profile tools run --rm seed
+  # Waits for the api (which runs `alembic upgrade head` on start) to be healthy first.
+  seed:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: runtime
+    env_file: .env
+    environment: *app-environment
+    # Resolves host.docker.internal on Linux too (Docker Desktop already provides it).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_healthy
+    command: python scripts/seed.py
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fastkern
+    ports:
+      - "5432:5432"
+    volumes:
+      # Postgres 18+ images keep PGDATA in a major-version subdirectory (/var/lib/postgresql/18/docker)
+      # so a later `pg_upgrade --link` can see both versions; the volume therefore mounts one level up.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    volumes:
+      - mailpit_data:/data
+
+volumes:
+  postgres_data:
+  mailpit_data:
+  files_data:

@@ -1,0 +1,23 @@
+name: Security Vulnerability
+description: Report a suspected security vulnerability privately.
+title: "[Security]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Important
+
+        For security vulnerabilities, please use the private reporting process described in [`SECURITY.md`](../../SECURITY.md).
+
+        Do **not** disclose sensitive vulnerability details, credentials, tokens, exploit code, or private information in a public GitHub issue.
+
+        This form is provided as a reminder to use the project's security policy.
+
+  - type: checkboxes
+    id: acknowledged
+    attributes:
+      label: Security Reporting
+      options:
+        - label: I understand that security vulnerabilities should be reported privately according to SECURITY.md.
+          required: true
