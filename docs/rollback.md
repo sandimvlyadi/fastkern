@@ -41,7 +41,9 @@ docker compose run -d --service-ports --name api-rollback api \
 
 If you deploy the published image ([Container images](./production.md#container-images)), skip
 the checkout and the build: point `api`, `worker` and `beat` at
-`ghcr.io/sandimvlyadi/fastkern:<PREVIOUS>` (or its digest) and redeploy them the same way.
+`ghcr.io/sandimvlyadi/fastkern:<PREVIOUS>` (or its digest) and redeploy them the same way. With
+`docker-compose.prod.yml` that is a change of `FASTKERN_IMAGE` and `up -d`, since its api doesn't
+migrate on start ([Deploying to a VPS](./deploy-vps.md#6-rolling-back)).
 
 ## 3. Roll back the schema (only if you must)
 

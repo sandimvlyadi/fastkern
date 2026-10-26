@@ -103,6 +103,7 @@ All targets are listed in [Development](./docs/development.md#make-targets).
 | [Observability](./docs/observability.md) | Logs, traces, metrics, readiness, what to alert on |
 | [Running in production](./docs/production.md) | Startup guards, checklist, migrations |
 | [Rolling back a release](./docs/rollback.md) | Undoing a bad release safely |
+| [Deploying to a VPS](./docs/deploy-vps.md) | One server with Docker Compose and nginx: deploy, roll out, back up |
 
 [`CLAUDE.md`](./CLAUDE.md) holds the rules AI coding agents follow in this repository.
 

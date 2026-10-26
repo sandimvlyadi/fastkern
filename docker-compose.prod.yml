@@ -1,0 +1,208 @@
+# Production stack for a single host. Standalone: it is not layered on docker-compose.yml, builds
+# nothing and runs the published image. Every command passes the env file explicitly:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production <command>
+#
+# The deploy steps (first deploy, rollout, rollback, backup) are in docs/deploy-vps.md.
+#
+# Only nginx publishes ports: db, redis and the api are reachable from other containers only.
+name: fastkern-prod
+
+# Docker's default json-file driver never rotates. The api logs every request and nginx every access,
+# so without a cap the logs fill the disk, and PostgreSQL goes down with it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+# Every service built from the app image. FASTKERN_IMAGE pins one release for all of them: a newer
+# api enqueueing task names an older worker doesn't know would fail those tasks.
+x-app: &app
+  image: ${FASTKERN_IMAGE:?set FASTKERN_IMAGE to a release tag or digest, never latest}
+  restart: unless-stopped
+  logging: *logging
+  env_file: .env.production
+  environment: &app-environment
+    ENVIRONMENT: production
+    DATABASE_URL: postgresql+asyncpg://fastkern:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/fastkern
+    REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+    CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+    CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+  # Uploaded files live here; api, worker and beat must all see the same volume.
+  volumes:
+    - files_data:/app/data
+  networks:
+    - internal
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  api:
+    <<: *app
+    environment:
+      <<: *app-environment
+      # uvicorn trusts X-Forwarded-For/-Proto only from this address, so the rate limiter sees the
+      # real client IP. Anything wider would let a client pick its own IP.
+      FORWARDED_ALLOW_IPS: ${NGINX_EDGE_IP:-172.30.10.10}
+    # Migrations are a separate step (the `migrate` service), not part of starting the api: an
+    # older image cannot run `alembic upgrade head` against a newer schema, which would make a
+    # rollback to the previous release fail.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - internal
+      - edge
+
+  worker:
+    <<: *app
+    command: celery -A app.core.celery_app worker --loglevel=info
+    # Time for running tasks to finish on a rollout before Docker kills the worker. A killed task is
+    # not lost (tasks ack late), but Redis redelivers it only after its visibility timeout, an hour.
+    stop_grace_period: 60s
+    # The image's HEALTHCHECK probes the API's /healthz; a worker serves no HTTP, so ping it
+    # through the broker instead (inspect ping -d targets only this container's node).
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A app.core.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # Periodic jobs. Exactly one beat per deployment: two would enqueue every periodic job twice.
+  beat:
+    <<: *app
+    # The schedule file goes to /tmp: the app user cannot write into /app.
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    # The image's HEALTHCHECK probes the API's /healthz, and beat serves no HTTP. Instead, check that
+    # a `celery ... beat` process is running. The pattern uses NUL bytes between argv entries, so the
+    # healthcheck's own command line does not match it.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import glob,sys; sys.exit(0 if any(b'celery\x00-A\x00app.core.celery_app\x00beat' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)"
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # One-shot deploy step, run before the new release serves traffic:
+  #   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
+  migrate:
+    <<: *app
+    profiles: ["ops"]
+    restart: "no"
+    command: alembic upgrade head
+    healthcheck:
+      disable: true
+
+  # One-shot, once per deployment (roles, permissions, the developer account). Needs
+  # SEED_DEFAULT_PASSWORD and SEED_DEVELOPER_EMAIL in .env.production.
+  seed:
+    <<: *app
+    profiles: ["ops"]
+    restart: "no"
+    command: python scripts/seed.py
+    healthcheck:
+      disable: true
+
+  # Optional malware scanner, only for MALWARE_SCAN_BACKEND=clamav: add `--profile clamav`.
+  clamav:
+    profiles: ["clamav"]
+    image: clamav/clamav:1.5.4
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: fastkern
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: fastkern
+    volumes:
+      # Postgres 18+ images keep PGDATA in a major-version subdirectory (/var/lib/postgresql/18/docker)
+      # so a later `pg_upgrade --link` can see both versions; the volume therefore mounts one level up.
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fastkern -d fastkern"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    logging: *logging
+    # Sessions (refresh tokens) live in Redis, so it keeps an append-only file: a restart would
+    # otherwise log every user out and drop queued tasks.
+    command: ["sh", "-c", 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Read by redis-cli, so the healthcheck needs no password on its command line.
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The only service reachable from the internet. Terminates TLS and proxies to the api.
+  nginx:
+    image: nginx:1.30-alpine
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The image renders /etc/nginx/templates/*.template into conf.d with these values.
+      SERVER_NAME: ${SERVER_NAME:?set SERVER_NAME to the public host name}
+    volumes:
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      # Certificates from certbot on the host (live/<SERVER_NAME>/fullchain.pem and privkey.pem).
+      - ${TLS_CERT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro
+      # certbot's --webroot writes ACME challenges here; nginx serves them on port 80.
+      - ${ACME_WEBROOT:-/var/www/certbot}:/var/www/certbot:ro
+    networks:
+      edge:
+        ipv4_address: ${NGINX_EDGE_IP:-172.30.10.10}
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  # nginx <-> api. A fixed subnet gives nginx a fixed address for FORWARDED_ALLOW_IPS. Change
+  # EDGE_SUBNET and NGINX_EDGE_IP together if this range is taken on the host.
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.30.10.0/24}
+  # Everything else. Not `internal: true`: the worker and api call out (email provider, partner
+  # APIs) and clamav fetches signature updates. db and redis publish no ports, so nothing outside
+  # the host reaches them either way.
+  internal:
+
+volumes:
+  postgres_data:
+  redis_data:
+  files_data:

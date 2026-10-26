@@ -61,6 +61,12 @@ def test_a_correct_production_configuration_starts() -> None:
     assert "settings-ok" in result.stdout
 
 
+def test_log_only_email_starts_in_production_when_opted_in() -> None:
+    result = _load_settings(EMAIL_BACKEND="console", EMAIL_CONSOLE_IN_PRODUCTION="true")
+    assert result.returncode == 0, result.stderr[-800:]
+    assert "settings-ok" in result.stdout
+
+
 @pytest.mark.parametrize(
     ("overrides", "expected"),
     [

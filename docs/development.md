@@ -101,7 +101,7 @@ SMTP: localhost:1025
 UI:   http://localhost:8025
 ```
 
-The API and worker containers reach it through `host.docker.internal:1025`. See
+The API and worker containers reach it as `mailpit:1025` over the compose network. See
 [ADR 0011](./adr/0011-notification-delivery.md) for the delivery design.
 
 ## Pre-commit and code quality

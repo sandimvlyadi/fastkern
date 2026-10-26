@@ -29,7 +29,7 @@ repos:
         language: pygrep
         entry: '\bADRs?\b|docs/adr'
         args: [--ignore-case]
-        files: '^(src|tests|scripts|migrations)/|^\.env\.example$|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
+        files: '^(src|tests|scripts|migrations)/|^\.env(\.production)?\.example$|^deploy/|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
 
       # Same reason: CLAUDE.md is instructions for AI coding agents, not project documentation,
       # so code states the rule itself instead of pointing at it.
@@ -37,7 +37,7 @@ repos:
         name: no CLAUDE.md references in code comments
         language: pygrep
         entry: 'CLAUDE\.md'
-        files: '^(src|tests|scripts|migrations)/|^\.env\.example$|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
+        files: '^(src|tests|scripts|migrations)/|^\.env(\.production)?\.example$|^deploy/|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

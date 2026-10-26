@@ -107,9 +107,11 @@ class Settings(BaseSettings):
 
     # --- Email delivery (notifications module) ---
     # "console" only logs (local/test); "smtp" uses the stdlib client; "http" posts to a provider
-    # API. Production must use smtp or http with real credentials. Nothing here ever reuses
+    # API. Production must use smtp or http with real credentials, unless
+    # `email_console_in_production` accepts log-only mail deliberately. Nothing here ever reuses
     # `secret_key`: that key signs JWTs and must never be sent anywhere.
     email_backend: Literal["smtp", "http", "console"] = "console"
+    email_console_in_production: bool = False
     email_from: str = "no-reply@example.com"
     smtp_host: str = "localhost"
     smtp_port: int = Field(default=1025, ge=1, le=65535)
@@ -222,7 +224,11 @@ class Settings(BaseSettings):
 
         problems: list[str] = []
         if self.email_backend == "console":
-            problems.append("EMAIL_BACKEND=console only logs mail; use smtp or http")
+            if not self.email_console_in_production:
+                problems.append(
+                    "EMAIL_BACKEND=console only logs mail; use smtp or http, or set "
+                    "EMAIL_CONSOLE_IN_PRODUCTION=true to accept that"
+                )
         elif self.email_backend == "smtp":
             if not (self.smtp_username and self.smtp_password):
                 problems.append("EMAIL_BACKEND=smtp needs SMTP_USERNAME and SMTP_PASSWORD")
