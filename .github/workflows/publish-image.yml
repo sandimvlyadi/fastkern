@@ -135,6 +135,9 @@ jobs:
               -e SECRET_KEY="$SMOKE_SECRET_KEY" -e DATABASE_URL="$SMOKE_DATABASE_URL" \
               "$IMAGE@$DIGEST" sh -ec \
               'uname -m; python -c "import app.main"; alembic --help >/dev/null; celery --version'
+            # The runner's image store keeps one image per `name@digest`, so pulling the next
+            # platform of the same index fails with "cannot overwrite digest" unless this one goes.
+            docker image rm "$IMAGE@$DIGEST" >/dev/null
             echo "::endgroup::"
           done
       - name: Summary
