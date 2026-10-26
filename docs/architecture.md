@@ -103,3 +103,4 @@ constraints; add a new ADR for a new decision.
 | [0019](./adr/0019-external-api-integration-pattern.md) | External API integration pattern |
 | [0020](./adr/0020-partner-api-key-integration.md) | Partner API key integration |
 | [0021](./adr/0021-permission-and-scope-catalog-in-code.md) | Permission and scope catalog in code |
+| [0022](./adr/0022-container-image-publishing.md) | Container image publishing |
