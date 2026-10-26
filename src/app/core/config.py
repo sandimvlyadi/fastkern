@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # --- App ---
     environment: Environment = Environment.LOCAL
     app_name: str = "fastkern"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     # None = follow the environment (on unless production). Set explicitly to expose the docs on

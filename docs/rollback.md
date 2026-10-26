@@ -52,8 +52,8 @@ release renamed or dropped a column the old code reads.
    git diff --stat v<PREVIOUS>..v<BAD> -- migrations/versions
    ```
 
-3. Read every one of those `downgrade()` functions and note what it drops. For example, rolling a
-   release built on today's `main` back to v0.2.0 (whose last migration is `0005`) would drop
+3. Read every one of those `downgrade()` functions and note what it drops. For example, rolling
+   v0.3.0 back to v0.2.0 (whose last migration is `0005`) would drop
    `sys_api_keys` and `sys_api_request_logs` (every issued partner API key and its traffic log)
    and `sys_audit_logs.actor_type` (who made each audit entry: user or partner).
 4. Downgrade to the previous release's last revision **before** redeploying the old code, using
