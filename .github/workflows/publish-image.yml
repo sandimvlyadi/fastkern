@@ -1,0 +1,155 @@
+name: Publish image
+
+# Publishes ghcr.io/<owner>/fastkern for a release tag (vX.Y.Z), for amd64 and arm64. A pull request
+# that touches this file or the Dockerfile runs the same build without pushing, so the workflow is
+# exercised before it ever runs for a real tag.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  # For a tag that already exists (pushed before this workflow did, or a failed run to repeat).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, e.g. v0.3.0
+        required: true
+        type: string
+      latest:
+        description: Also move `latest` to this release (untick when republishing an older one)
+        required: true
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - .github/workflows/publish-image.yml
+      - Dockerfile
+
+concurrency:
+  group: publish-image-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  PLATFORMS: linux/amd64,linux/arm64
+  # Empty on a pull request, which builds without pushing.
+  RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+  # The smoke tests import the app, whose settings require these. Nothing connects to the database.
+  SMOKE_SECRET_KEY: smoke-test-only-value-not-a-real-secret
+  SMOKE_DATABASE_URL: postgresql+asyncpg://smoke@localhost:5432/smoke
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Release tag is vX.Y.Z
+        if: env.RELEASE_TAG != ''
+        run: |
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$RELEASE_TAG' is not a vX.Y.Z release tag"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG || github.sha }}
+      # A tag cut before the version bump would publish an image whose /healthz and /openapi.json
+      # report the previous version under the new tag.
+      - name: Tag matches the project version
+        if: env.RELEASE_TAG != ''
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)
+          if [ "v$version" != "$RELEASE_TAG" ]; then
+            echo "::error::pyproject.toml is at $version, but the tag is $RELEASE_TAG"
+            exit 1
+          fi
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: env.RELEASE_TAG != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # `0.3.0` and `0.3`, plus `latest` unless a manual run opts out. Deployments pin a version or
+      # a digest; `latest` is only a convenience for trying the image out.
+      - id: meta
+        uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' }}
+            type=raw,value=latest,enable=${{ env.RELEASE_TAG != '' && (github.event_name != 'workflow_dispatch' || inputs.latest) }}
+            type=ref,event=pr
+      # The amd64 image is built into the local daemon first so the scan and the smoke test see
+      # exactly what gets pushed; nothing is pushed unless both pass.
+      - name: Build amd64 for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          tags: fastkern:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan image for fixable HIGH/CRITICAL CVEs
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+          image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+          fastkern:scan
+      # Every process type starts from this image: an import or a broken venv shebang fails here
+      # instead of on the first deploy.
+      - name: Smoke-test the amd64 image
+        run: |
+          docker run --rm -e SECRET_KEY="$SMOKE_SECRET_KEY" -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            fastkern:scan sh -ec \
+            'python -c "import app.main"; alembic --help >/dev/null; celery --version; uvicorn --version'
+      - id: build
+        name: Build all platforms${{ env.RELEASE_TAG != '' && ' and push' || '' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ env.RELEASE_TAG != '' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke-test every pushed platform
+        if: env.RELEASE_TAG != ''
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          for platform in ${PLATFORMS//,/ }; do
+            echo "::group::$platform"
+            docker run --rm --platform "$platform" \
+              -e SECRET_KEY="$SMOKE_SECRET_KEY" -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+              "$IMAGE@$DIGEST" sh -ec \
+              'uname -m; python -c "import app.main"; alembic --help >/dev/null; celery --version'
+            echo "::endgroup::"
+          done
+      - name: Summary
+        if: env.RELEASE_TAG != ''
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Published \`$IMAGE\`"
+            echo
+            echo "Digest: \`$DIGEST\`"
+            echo
+            echo "Tags:"
+            echo "$TAGS" | sed 's/^/- `/; s/$/`/'
+            echo
+            echo "Pin a deployment to \`$IMAGE@$DIGEST\` or \`$IMAGE:${RELEASE_TAG#v}\`."
+          } >> "$GITHUB_STEP_SUMMARY"

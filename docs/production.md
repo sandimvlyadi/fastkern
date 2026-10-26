@@ -35,6 +35,34 @@ shorter than 12 characters, or a missing `SEED_DEVELOPER_EMAIL`.
 API documentation (`/docs`, `/redoc`, `/openapi.json`) is off in production by default. Set
 `DOCS_ENABLED=true` to keep it on an internal deployment.
 
+## Container images
+
+Every release tag `vX.Y.Z` is published to `ghcr.io/sandimvlyadi/fastkern` for `linux/amd64`
+and `linux/arm64`, tagged `X.Y.Z`, `X.Y` and `latest`. The image is public, so pulling it needs
+no login:
+
+```bash
+docker pull ghcr.io/sandimvlyadi/fastkern:0.3.0
+```
+
+Pin a deployment to the version tag, or to the digest the publish workflow prints in its run
+summary (`ghcr.io/sandimvlyadi/fastkern@sha256:...`). Never deploy `latest`: it moves with every
+release, so a restart can silently change the running version, and a rollback has nothing to
+point back to.
+
+The same image runs every process type. Only the command differs:
+
+| Process | Command |
+|---|---|
+| API | `uvicorn app.main:app --host 0.0.0.0 --port 8000` (the image's default) |
+| Worker | `celery -A app.core.celery_app worker --loglevel=info` |
+| Beat (exactly one) | `celery -A app.core.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule` |
+| Migrations | `alembic upgrade head` |
+| Seed (once) | `python scripts/seed.py` |
+
+The image's `HEALTHCHECK` probes the API's `/healthz`, so the worker and beat need their own
+health checks. `docker-compose.yml` has the ones to copy.
+
 ## Database migrations
 
 Run migrations as an explicit deployment step, once, before the new version starts serving:

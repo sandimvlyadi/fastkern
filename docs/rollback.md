@@ -39,6 +39,10 @@ docker compose run -d --service-ports --name api-rollback api \
 
 (If you also rolled the schema back in step 3, a plain `docker compose up -d api` works again.)
 
+If you deploy the published image ([Container images](./production.md#container-images)), skip
+the checkout and the build: point `api`, `worker` and `beat` at
+`ghcr.io/sandimvlyadi/fastkern:<PREVIOUS>` (or its digest) and redeploy them the same way.
+
 ## 3. Roll back the schema (only if you must)
 
 Only needed when the old code can't run against the new schema, for example because the new
