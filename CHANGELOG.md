@@ -8,6 +8,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Versions 0.1.0 and 0.2.0 were developed before this repository was published, so their tags
 are not part of its history.
 
+## 0.3.0 - 2026-10-26
+
+First release from this repository, which continues the project under the
+name `fastkern`.
+
+### Added
+
+- **Partner API keys** (`api_clients` module): tenant-scoped keys sent in
+  `X-API-Key`, with scope-based authorization independent of RBAC, expiry,
+  rotation with an overlap window, and revocation. Partner calls get their
+  own `PARTNER` rate-limit tier and a request traffic log with a retention
+  purge job. Audit entries record whether a user or a partner acted
+  (`actor_type`).
+- **Partner read endpoints** under `/partners`: posts, users, roles (and a
+  user's role assignments), master examples, examples, and files (metadata
+  and content), each guarded by its own `<resource>:read` scope.
+- **Permission and scope catalogs**: `GET /roles/permissions` and
+  `GET /api-clients/scopes` list what a client can pick from, with a
+  per-caller `grantable` flag.
+- **Posts module**: an example of integrating an external HTTP API
+  (JSONPlaceholder) through a domain port and an httpx + tenacity adapter.
+- A startup warning (`metrics_endpoint_unauthenticated`) when production
+  serves `/metrics` without `METRICS_AUTH_TOKEN`.
+- Documentation in `docs/`: architecture, development, testing, security,
+  i18n and timezone, observability, production, and a rollback runbook.
+- CI: end-to-end jobs that boot the real Docker stack (general, rate-limit,
+  outage, and real-ClamAV suites), a Trivy scan of the image for fixable
+  HIGH/CRITICAL CVEs, Dependabot, and pre-commit hooks rejecting ADR and
+  internal-plan references in code comments.
+
+### Changed
+
+- Python 3.14, with the dependency tree upgraded (FastAPI 0.161,
+  SQLAlchemy 2.1, Pydantic 2.14, asyncpg 0.32, uvicorn 0.54).
+- The compose stack runs PostgreSQL 18 and Redis 8, with every service
+  image pinned. An existing PostgreSQL 16 dev volume must be recreated or
+  upgraded with `pg_upgrade`.
+- Creating a role, or adding a permission to one, rejects permissions
+  outside the catalog (`422 unknown_permission`). `resource:*` is no longer
+  accepted, since it never granted anything.
+- Creating or rotating an API key requires the caller to hold an RBAC
+  permission matching each requested scope (`403 scope_escalation`), and
+  unknown scopes are rejected (`422 unknown_scope`). An expired key cannot
+  be rotated (`409 api_key_already_expired`).
+- The request's database transaction now commits before the response is
+  sent, so a client never acts on a success whose commit later failed.
+- The Docker image pins its Python base image by digest, copies a pinned
+  `uv` instead of piping an install script, and drops `pip` from the
+  runtime stage.
+- The README is now a short overview; the details moved into `docs/`.
+
+### Fixed
+
+- A Redis broker outage returns `503` with `Retry-After` instead of a `500`
+  or a stalled event loop: tasks are published from a worker thread
+  (`dispatch_task`) without subscribing to a result.
+- Patched vulnerable runtime dependencies (Pillow 13, certifi,
+  OpenTelemetry), and `pip-audit` now fails the build on any finding.
+- The posts adapter maps unexpected upstream responses to
+  `PostsServiceError` (`502`) instead of a `500`, and no longer retries a
+  `POST` that may already have been sent.
+- The request-log and audit-log tasks actually retry transient database
+  errors.
+- Verifying an API key no longer takes a row lock, so concurrent calls with
+  one key don't queue behind each other.
+
+### Upgrade notes
+
+- Migrations `0006`–`0008` add `sys_api_keys`, `sys_api_request_logs`, and
+  `sys_audit_logs.actor_type`. Rolling back to 0.2.0 drops them; see
+  `docs/rollback.md`.
+
 ## 0.2.0 - 2026-10-09
 
 ### Added

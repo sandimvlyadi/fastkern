@@ -1,6 +1,6 @@
 [project]
 name = "fastkern"
-version = "0.2.0"
+version = "0.3.0"
 description = "Enterprise-grade FastAPI boilerplate: modular monolith, clean architecture, production-ready."
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
