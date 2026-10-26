@@ -26,6 +26,7 @@ from app.modules.files.infrastructure.factory import warn_if_uploads_are_unscann
 from app.modules.files.presentation.router import public_router as files_public_router
 from app.modules.files.presentation.router import router as files_router
 from app.modules.master_examples.presentation.router import router as master_examples_router
+from app.modules.notifications.infrastructure.factory import warn_if_email_is_log_only
 from app.modules.partners.presentation.router import router as partners_router
 from app.modules.posts.presentation.router import router as posts_router
 from app.modules.roles.presentation.router import router as roles_router
@@ -41,6 +42,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     settings = app_settings or get_settings()
     warn_if_uploads_are_unscanned(settings)
     warn_if_metrics_are_unauthenticated(settings)
+    warn_if_email_is_log_only(settings)
     docs_enabled = settings.api_docs_enabled
     app = FastAPI(
         title=settings.app_name,

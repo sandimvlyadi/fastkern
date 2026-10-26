@@ -20,7 +20,10 @@ from app.modules.notifications.infrastructure import smtp_adapter as smtp_module
 from app.modules.notifications.infrastructure import tasks as notification_tasks
 from app.modules.notifications.infrastructure.console_adapter import ConsoleEmailAdapter
 from app.modules.notifications.infrastructure.email_adapter import HttpEmailAdapter
-from app.modules.notifications.infrastructure.factory import build_notification_sender
+from app.modules.notifications.infrastructure.factory import (
+    build_notification_sender,
+    warn_if_email_is_log_only,
+)
 from app.modules.notifications.infrastructure.masking import mask_email
 from app.modules.notifications.infrastructure.smtp_adapter import SmtpEmailAdapter
 
@@ -311,6 +314,22 @@ def _production(**overrides: object) -> Settings:
 def test_production_refuses_the_console_backend() -> None:
     with pytest.raises(ValidationError, match="EMAIL_BACKEND=console"):
         _production(email_backend="console")
+
+
+def test_production_accepts_the_console_backend_only_when_opted_in() -> None:
+    settings = _production(email_backend="console", email_console_in_production=True)
+    assert settings.email_backend == "console"
+
+
+def test_log_only_email_in_production_is_logged() -> None:
+    opted_in = _production(email_backend="console", email_console_in_production=True)
+    smtp = _production(
+        email_backend="smtp", smtp_username="mailer", smtp_password=SecretStr(PASSWORD)
+    )
+    with capture_logs() as logs:
+        for settings in (opted_in, smtp, _settings(Environment.STAGING)):
+            warn_if_email_is_log_only(settings)
+    assert [log["event"] for log in logs] == ["email_not_delivered"]
 
 
 def test_production_smtp_needs_credentials() -> None:

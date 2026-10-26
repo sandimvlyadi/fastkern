@@ -1,10 +1,23 @@
 """Picks the `NotificationSenderPort` implementation for the configured `EMAIL_BACKEND`."""
 
 from app.core.config import Settings
+from app.core.logging import get_logger
 from app.modules.notifications.domain.ports import NotificationSenderPort
 from app.modules.notifications.infrastructure.console_adapter import ConsoleEmailAdapter
 from app.modules.notifications.infrastructure.email_adapter import HttpEmailAdapter
 from app.modules.notifications.infrastructure.smtp_adapter import SmtpEmailAdapter
+
+logger = get_logger(__name__)
+
+
+def warn_if_email_is_log_only(settings: Settings) -> None:
+    """Production may run the console backend when EMAIL_CONSOLE_IN_PRODUCTION accepts it. No
+    mail reaches anyone then, so that must be visible in the logs."""
+    if settings.is_production and settings.email_backend == "console":
+        logger.warning(
+            "email_not_delivered",
+            hint="set EMAIL_BACKEND=smtp or http with the provider's credentials",
+        )
 
 
 def build_notification_sender(settings: Settings) -> NotificationSenderPort:
