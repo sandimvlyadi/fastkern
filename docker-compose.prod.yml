@@ -8,11 +8,20 @@
 # Only nginx publishes ports: db, redis and the api are reachable from other containers only.
 name: fastkern-prod
 
+# Docker's default json-file driver never rotates. The api logs every request and nginx every access,
+# so without a cap the logs fill the disk, and PostgreSQL goes down with it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
 # Every service built from the app image. FASTKERN_IMAGE pins one release for all of them: a newer
 # api enqueueing task names an older worker doesn't know would fail those tasks.
 x-app: &app
   image: ${FASTKERN_IMAGE:?set FASTKERN_IMAGE to a release tag or digest, never latest}
   restart: unless-stopped
+  logging: *logging
   env_file: .env.production
   environment: &app-environment
     ENVIRONMENT: production
@@ -50,6 +59,9 @@ services:
   worker:
     <<: *app
     command: celery -A app.core.celery_app worker --loglevel=info
+    # Time for running tasks to finish on a rollout before Docker kills the worker. A killed task is
+    # not lost (tasks ack late), but Redis redelivers it only after its visibility timeout, an hour.
+    stop_grace_period: 60s
     # The image's HEALTHCHECK probes the API's /healthz; a worker serves no HTTP, so ping it
     # through the broker instead (inspect ping -d targets only this container's node).
     healthcheck:
@@ -103,6 +115,7 @@ services:
     profiles: ["clamav"]
     image: clamav/clamav:1.5.4
     restart: unless-stopped
+    logging: *logging
     networks:
       - internal
     healthcheck:
@@ -115,6 +128,7 @@ services:
   db:
     image: postgres:18-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: fastkern
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -134,6 +148,7 @@ services:
   redis:
     image: redis:8-alpine
     restart: unless-stopped
+    logging: *logging
     # Sessions (refresh tokens) live in Redis, so it keeps an append-only file: a restart would
     # otherwise log every user out and drop queued tasks.
     command: ["sh", "-c", 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes']
@@ -155,6 +170,7 @@ services:
   nginx:
     image: nginx:1.30-alpine
     restart: unless-stopped
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"

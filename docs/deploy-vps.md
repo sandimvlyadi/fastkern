@@ -47,13 +47,18 @@ you exactly those, alongside the rest of the repository:
 
 ```bash
 sudo git clone --depth 1 --branch v<VERSION> https://github.com/sandimvlyadi/fastkern.git /opt/fastkern
+sudo chown -R "$USER": /opt/fastkern
 ```
+
+The commands below run as that user, who must be in the `docker` group (`sudo usermod -aG docker
+"$USER"`, then log in again). Membership in that group is equivalent to root, so it belongs only to
+the people who operate the server.
 
 ## 2. Configure
 
 ```bash
-sudo cp .env.production.example .env.production
-sudo chmod 600 .env.production
+cp .env.production.example .env.production
+chmod 600 .env.production
 ```
 
 Fill in every `CHANGE-ME`:
@@ -115,7 +120,14 @@ dc pull
 dc run --rm migrate          # alembic upgrade head
 dc up -d --wait              # every service healthy, or this fails
 dc run --rm seed             # once: baseline tenant, roles, permissions, initial accounts
-curl -fsS https://api.example.com/readyz
+curl -fsS https://api.example.com/healthz
+```
+
+nginx keeps `/readyz` off the internet, since it names the dependency that is down. Check it from
+the server:
+
+```bash
+dc exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/readyz').read().decode())"
 ```
 
 Check:
@@ -123,7 +135,10 @@ Check:
 - `dc ps` shows every service healthy.
 - `dc logs api` shows only the startup warnings you accepted on purpose (`email_not_delivered`,
   `uploads_not_malware_scanned`).
-- `curl -s -o /dev/null -w '%{http_code}' https://api.example.com/metrics` prints `404`.
+- The readiness check above reports every dependency `ok`. `beat` shows `ok` about a minute after
+  the start, once its first heartbeat ran.
+- `curl -s -o /dev/null -w '%{http_code}' https://api.example.com/metrics` prints `404`, and so
+  does `/readyz`.
 - `dc logs nginx` shows your own IP for your requests. The api rate limits on the client IP that
   nginx passes on. If every request shows the same private address instead, something in front of
   nginx (a load balancer, Docker's userland proxy) hides the client address, and every client
@@ -140,14 +155,26 @@ Check:
 4. Migrate, then restart on the new image:
 
    ```bash
-   dc pull
+   dc pull api worker beat
    dc run --rm migrate
    dc up -d --wait
    ```
 
+   Pull only the app image here. A plain `dc pull` would also fetch newer PostgreSQL, Redis and
+   nginx images (their tags follow patch releases), and `up` would then restart the database in the
+   middle of the rollout. Update those separately (section 8).
+
    The running api serves the new schema for the few seconds in between. That is safe because
    releases keep their migrations additive.
-5. Verify as after the first deploy.
+5. If the release changed `deploy/nginx/`, recreate nginx as well. nginx renders its templates
+   only when the container starts, and `up` leaves a container alone whose compose definition didn't
+   change:
+
+   ```bash
+   dc up -d --force-recreate nginx
+   ```
+
+6. Verify as after the first deploy.
 
 There is one api container, so `up` restarts it: requests fail with a 502 for a few seconds while it
 comes back. A zero-downtime rollout needs a second api replica behind nginx and is out of scope here.
@@ -224,6 +251,17 @@ dc exec -T db dropdb -U fastkern restore_check
 - Logs: `dc logs -f --tail 100 api worker`. They are JSON, one event per line.
 - ClamAV: with `MALWARE_SCAN_BACKEND=clamav`, add `COMPOSE_PROFILES=clamav` to `.env.production`
   so every `dc up` starts it too.
+- Updating PostgreSQL, Redis and nginx within their pinned versions (security patches), as its own
+  step, after a backup:
+
+  ```bash
+  dc pull db redis nginx
+  dc up -d --wait
+  ```
+
+  This restarts whichever of them got a new image: the api answers 503 or 502 for a few seconds.
+- Container logs are capped at 5 files of 10 MB per container (`x-logging` in the compose file).
+  Ship them elsewhere if you need more history.
 - Disk: Docker keeps every image you pulled. `docker image prune -a` removes the unused ones;
   keep the previous release's image around until you are sure you won't roll back.
 - Upgrading PostgreSQL to a new major version needs `pg_upgrade` or a dump and restore; it is not

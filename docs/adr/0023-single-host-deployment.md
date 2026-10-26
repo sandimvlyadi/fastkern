@@ -21,14 +21,15 @@ start without one.
 - **A standalone `docker-compose.prod.yml`**, not an override of the development file, so nothing
   from development leaks into production by merge. It runs the published image named by one
   `FASTKERN_IMAGE` variable for the api, worker, beat and the one-shot steps, so they can't drift
-  apart. Restart policies on every long-running service. The project is named `fastkern-prod`, so
+  apart. Restart policies and capped, rotated container logs on every long-running service. The project is named `fastkern-prod`, so
   it can't share volumes with a development stack on the same machine.
 - **Migrations are an explicit step** (`run --rm migrate`, in an `ops` profile with `seed`), never
   part of the api's start. Rolling back is then only a change of `FASTKERN_IMAGE`.
 - **nginx is the only service with published ports.** It terminates TLS with certbot certificates
   from the host (webroot renewals, a deploy hook reloads nginx), redirects HTTP to HTTPS, drops
   requests for unknown host names, allows request bodies of 25 MB (one 20 MiB upload chunk plus
-  headers) and answers `/metrics` with 404. It resolves the api through Docker's DNS at run time,
+  headers) and answers `/metrics` and `/readyz` with 404 (readiness names the dependency that is
+  down, so the operator checks it from the host). It resolves the api through Docker's DNS at run time,
   since a rollout gives the api container a new address.
 - **Client IPs**: nginx overwrites `X-Forwarded-For` with the connecting address, and sits at a
   fixed address on its own network with the api; uvicorn trusts forwarded headers from that address

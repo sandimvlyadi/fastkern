@@ -64,6 +64,12 @@ server {
         return 404;
     }
 
+    # Readiness names the dependency that is down; check it from the host instead. /healthz stays
+    # public for uptime monitors.
+    location = /readyz {
+        return 404;
+    }
+
     # The api sets HSTS and the other security headers itself, so they are not repeated here.
     location / {
         proxy_pass http://fastkern_api;
