@@ -40,6 +40,10 @@ dump.rdb
 # uploaded files and their temporary chunks (files module)
 data/
 
+# documentation site build output and Zensical's build cache
+site/
+.cache/
+
 # docker
 docker-compose.override.yml
 

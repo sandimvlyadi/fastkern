@@ -279,12 +279,17 @@ When changing behavior, architecture, configuration, development workflows, or p
 Useful documentation locations include:
 
 ```text
-README.md          # overview and quickstart only
+README.md          # overview and getting started only
 docs/*.md          # guides: architecture, development, testing, security, production, ...
 docs/module-guide.md
 docs/adr/          # architecture decisions
+mkdocs.yml         # navigation of the documentation site built from docs/
 CLAUDE.md          # rules for AI coding agents
 ```
+
+Everything in `docs/` is also published as the documentation site. Add a new guide to `nav` in
+`mkdocs.yml`, and preview it with `make docs`; `make docs-build` fails on a broken link the way
+CI does.
 
 ## Security Issues
 

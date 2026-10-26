@@ -53,6 +53,9 @@ dev = [
     "aiosqlite>=0.22.1",
     "faker>=40.43.0",
 ]
+docs = [
+    "zensical>=0.0.72",
+]
 
 [build-system]
 requires = ["hatchling"]

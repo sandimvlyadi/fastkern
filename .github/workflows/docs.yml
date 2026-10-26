@@ -1,0 +1,60 @@
+name: Docs
+
+# Builds the documentation site from docs/ on every pull request that touches it, failing on any
+# warning such as a broken link, and publishes it to GitHub Pages from main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+# A newer push supersedes a pull request's build, but a deployment already running on main finishes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+        with:
+          version: "0.13.5"
+      - run: uv sync --only-group docs
+      - run: uv run --no-sync zensical build --strict
+      - uses: actions/upload-pages-artifact@v5
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    # Only this repository publishes the site: a copy made from the template has no Pages set up
+    # until its owner turns it on and changes the repository name here.
+    if: github.ref == 'refs/heads/main' && github.repository == 'sandimvlyadi/fastkern'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

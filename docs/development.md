@@ -4,7 +4,17 @@
 
 ### Everything in Docker
 
-See the [Quickstart](../README.md#quickstart) in the README.
+The whole stack from a checkout, with the image built locally:
+
+```bash
+cp .env.example .env              # works as is locally; change SECRET_KEY before deploying
+docker compose up -d --build      # PostgreSQL, Redis, Mailpit, API, worker, beat
+docker compose --profile tools run --rm seed   # baseline tenant, roles and users
+```
+
+After about a minute `docker compose ps` shows every service as healthy. The API docs are at
+`http://localhost:8000/docs` and Mailpit at `http://localhost:8025`. To try the published image
+without a checkout instead, see [Try it from the image](./quickstart.md).
 
 ### Docker with hot reload
 
@@ -88,6 +98,7 @@ the new one.
 | `make docker-dev` | Run the compose stack with hot reload |
 | `make docker-seed` / `make docker-seed-dev` | Seed the compose stack / one started with `make docker-dev` |
 | `make e2e`, `make e2e-ratelimit`, `make e2e-destructive` | End-to-end suites, see [Testing](./testing.md) |
+| `make docs` / `make docs-build` | Preview the documentation site with live reload / build it as CI does |
 
 ## Email
 
@@ -116,7 +127,21 @@ make precommit
 
 Passing pre-commit keeps the `lint`, `typecheck` and `arch-check` CI jobs green, but it doesn't
 replace the test suite. Comment style is described in
-[CONTRIBUTING.md](../CONTRIBUTING.md#comments-and-docstrings).
+[CONTRIBUTING.md](https://github.com/sandimvlyadi/fastkern/blob/main/CONTRIBUTING.md#comments-and-docstrings).
+
+## Documentation site
+
+The guides in `docs/` are also published as a site on GitHub Pages, built with
+[Zensical](https://zensical.org) from `mkdocs.yml`. They stay plain Markdown, readable on GitHub
+as well. Preview the site while editing:
+
+```bash
+make docs          # http://localhost:8001, reloads on save
+make docs-build    # strict build into site/, fails on a broken link as CI does
+```
+
+A link from a guide to a file outside `docs/` (the README, a compose file) must be a full GitHub
+URL: the site only contains `docs/`, so a relative `../` link would break there.
 
 ## Adding a module
 
@@ -131,6 +156,6 @@ It creates the four-layer structure under `src/app/modules/orders/` and register
 
 ## AI-assisted development
 
-[`CLAUDE.md`](../CLAUDE.md) holds the rules an AI coding agent follows in this repository: the
-same architecture, security, testing and quality standards expected from human contributors, in
-a form an agent reads before changing anything.
+[`CLAUDE.md`](https://github.com/sandimvlyadi/fastkern/blob/main/CLAUDE.md) holds the rules an AI
+coding agent follows in this repository: the same architecture, security, testing and quality
+standards expected from human contributors, in a form an agent reads before changing anything.
