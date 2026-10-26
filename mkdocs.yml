@@ -5,7 +5,6 @@ site_description: Enterprise FastAPI boilerplate. Modular monolith, Clean Archit
 site_url: https://sandimvlyadi.github.io/fastkern/
 repo_url: https://github.com/sandimvlyadi/fastkern
 repo_name: sandimvlyadi/fastkern
-edit_uri: edit/main/docs/
 copyright: MIT License
 
 docs_dir: docs

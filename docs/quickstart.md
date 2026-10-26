@@ -60,7 +60,15 @@ new user in the same tenant; its welcome email shows up in Mailpit.
 
 ## Pick a version
 
-The compose file runs `latest`, the newest release. To run a specific one, set `FASTKERN_IMAGE`:
+The compose file runs `latest`. Docker pulls it once and keeps using that copy, so to move to the
+newest release later, pull it again before `up`:
+
+```bash
+docker compose -f docker-compose.quickstart.yml pull
+docker compose -f docker-compose.quickstart.yml up -d
+```
+
+To run a specific release instead, set `FASTKERN_IMAGE`:
 
 ```bash
 FASTKERN_IMAGE=ghcr.io/sandimvlyadi/fastkern:0.3.0 \

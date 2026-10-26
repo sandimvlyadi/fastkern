@@ -35,11 +35,13 @@ drops the plugin and theme system Material depends on.
 - **The site is built with [Zensical](https://zensical.org)** from the unchanged Markdown in
   `docs/` and `mkdocs.yml`, and published to GitHub Pages from `main` by
   `.github/workflows/docs.yml`. Pull requests that touch the docs run a strict build that fails on
-  a broken link. Zensical is the successor to Material for MkDocs from the same team, reads
+  a link to a missing page. Zensical is the successor to Material for MkDocs from the same team, reads
   `mkdocs.yml`, and installs with uv like the rest of the toolchain. It is pinned through
   `uv.lock` in its own `docs` dependency group.
 - **Links from `docs/` to files outside it are full GitHub URLs**: the site contains only
-  `docs/`, so a relative `../` link would break there.
+  `docs/`, so a relative `../` link would break there. The strict build only catches such a link
+  when it points at a Markdown file, so a pre-commit hook rejects every relative link that leaves
+  `docs/`.
 
 Alternatives considered:
 

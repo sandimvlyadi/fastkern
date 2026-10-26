@@ -1,7 +1,7 @@
 name: Docs
 
 # Builds the documentation site from docs/ on every pull request that touches it, failing on any
-# warning such as a broken link, and publishes it to GitHub Pages from main.
+# warning such as a link to a missing page, and publishes it to GitHub Pages from main.
 on:
   push:
     branches: [main]

@@ -137,11 +137,12 @@ as well. Preview the site while editing:
 
 ```bash
 make docs          # http://localhost:8001, reloads on save
-make docs-build    # strict build into site/, fails on a broken link as CI does
+make docs-build    # strict build into site/, fails on a link to a missing page as CI does
 ```
 
 A link from a guide to a file outside `docs/` (the README, a compose file) must be a full GitHub
-URL: the site only contains `docs/`, so a relative `../` link would break there.
+URL: the site only contains `docs/`, so a relative `../` link would break there. The strict build
+doesn't notice such a link to a non-Markdown file; a pre-commit hook rejects them instead.
 
 ## Adding a module
 

@@ -288,8 +288,9 @@ CLAUDE.md          # rules for AI coding agents
 ```
 
 Everything in `docs/` is also published as the documentation site. Add a new guide to `nav` in
-`mkdocs.yml`, and preview it with `make docs`; `make docs-build` fails on a broken link the way
-CI does.
+`mkdocs.yml`, and preview it with `make docs`; `make docs-build` fails on a link to a missing page
+the way CI does. Link from `docs/` to files outside it (the README, a compose file) with a full
+GitHub URL: the site contains only `docs/`, and a pre-commit hook rejects a relative `../` link.
 
 ## Security Issues
 

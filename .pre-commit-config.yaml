@@ -39,6 +39,21 @@ repos:
         entry: 'CLAUDE\.md'
         files: '^(src|tests|scripts|migrations)/|^\.env(\.production)?\.example$|^deploy/|^Makefile$|^Dockerfile$|^docker-compose[^/]*\.ya?ml$|^pyproject\.toml$|^alembic\.ini$|^\.github/workflows/'
 
+      # The documentation site is built from docs/ alone, so a relative link that climbs out of it
+      # (to the README, a compose file, deploy/) is a 404 there. The site's strict build only flags
+      # links to missing Markdown pages, so these catch the rest; link with a full GitHub URL instead.
+      - id: no-relative-links-outside-docs
+        name: no relative links from docs/ to files outside it
+        language: pygrep
+        entry: '\]\(\.\./|^\[[^\]]+\]:\s*\.\./'
+        files: '^docs/[^/]+\.md$'
+
+      - id: no-relative-links-outside-docs-adr
+        name: no relative links from docs/adr/ to files outside docs/
+        language: pygrep
+        entry: '\]\(\.\./\.\./|^\[[^\]]+\]:\s*\.\./\.\./'
+        files: '^docs/adr/[^/]+\.md$'
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

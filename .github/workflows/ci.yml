@@ -203,6 +203,20 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
           docker compose -f docker-compose.prod.yml --env-file .env.production config --quiet
           docker compose -f docker-compose.quickstart.yml config --quiet
+      # Each compose file pins its own PostgreSQL, Redis and Mailpit images. A bump applied to one
+      # of them only, by hand or by an update bot, would leave the others on an older release.
+      - name: Compose files pin the same images
+        run: |
+          images() {
+            docker compose "$@" config --format json | jq -r '.services | to_entries[]
+              | select(.key == "db" or .key == "redis" or .key == "mailpit")
+              | "\(.key)=\(.value.image)"' | sort
+          }
+          dev=$(images -f docker-compose.yml)
+          diff <(echo "$dev") <(images -f docker-compose.quickstart.yml) \
+            || { echo "::error::docker-compose.quickstart.yml pins other images than docker-compose.yml"; exit 1; }
+          diff <(echo "$dev" | grep -v '^mailpit=') <(images -f docker-compose.prod.yml --env-file .env.production) \
+            || { echo "::error::docker-compose.prod.yml pins other images than docker-compose.yml"; exit 1; }
       # Renders the production nginx template the way the nginx image does at start and runs
       # `nginx -t` on it, with a throwaway self-signed certificate for SERVER_NAME.
       - name: Validate the production nginx config
