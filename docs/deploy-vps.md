@@ -1,9 +1,11 @@
 # Deploying to a VPS
 
 How to run fastkern on a single Linux server with Docker Compose and nginx, from the published
-image. Everything lives in [`docker-compose.prod.yml`](../docker-compose.prod.yml) and
-[`deploy/nginx/`](../deploy/nginx/). The general production rules (startup guards, what is your
-responsibility) are in [Running in production](./production.md). Read that first.
+image. Everything lives in
+[`docker-compose.prod.yml`](https://github.com/sandimvlyadi/fastkern/blob/main/docker-compose.prod.yml)
+and [`deploy/nginx/`](https://github.com/sandimvlyadi/fastkern/tree/main/deploy/nginx). The general
+production rules (startup guards, what is your responsibility) are in
+[Running in production](./production.md). Read that first.
 
 | Service | Role | Reachable from |
 |---|---|---|

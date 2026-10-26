@@ -103,4 +103,4 @@ See [ADR 0014](./adr/0014-file-storage-and-resumable-uploads.md) and
 
 ## Reporting a vulnerability
 
-See [SECURITY.md](../SECURITY.md).
+See [SECURITY.md](https://github.com/sandimvlyadi/fastkern/blob/main/SECURITY.md).

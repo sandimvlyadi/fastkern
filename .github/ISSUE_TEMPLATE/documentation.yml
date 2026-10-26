@@ -9,7 +9,7 @@ body:
     attributes:
       label: Documentation Location
       description: Provide the file, section, page, or URL where the issue exists.
-      placeholder: README.md — Quickstart / docs/security.md
+      placeholder: README.md — Getting started / docs/security.md / a page on the documentation site
     validations:
       required: true
 

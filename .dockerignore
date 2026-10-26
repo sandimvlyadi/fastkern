@@ -20,3 +20,6 @@ docs
 tests
 .claude
 .vscode
+# documentation site build output and Zensical's build cache
+site
+.cache

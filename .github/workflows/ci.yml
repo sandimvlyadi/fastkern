@@ -202,10 +202,51 @@ jobs:
           docker compose -f docker-compose.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
           docker compose -f docker-compose.prod.yml --env-file .env.production config --quiet
+          docker compose -f docker-compose.quickstart.yml config --quiet
+      # Each compose file pins its own PostgreSQL, Redis and Mailpit images. A bump applied to one
+      # of them only, by hand or by an update bot, would leave the others on an older release.
+      - name: Compose files pin the same images
+        run: |
+          images() {
+            docker compose "$@" config --format json | jq -r '.services | to_entries[]
+              | select(.key == "db" or .key == "redis" or .key == "mailpit")
+              | "\(.key)=\(.value.image)"' | sort
+          }
+          dev=$(images -f docker-compose.yml)
+          diff <(echo "$dev") <(images -f docker-compose.quickstart.yml) \
+            || { echo "::error::docker-compose.quickstart.yml pins other images than docker-compose.yml"; exit 1; }
+          diff <(echo "$dev" | grep -v '^mailpit=') <(images -f docker-compose.prod.yml --env-file .env.production) \
+            || { echo "::error::docker-compose.prod.yml pins other images than docker-compose.yml"; exit 1; }
       # Renders the production nginx template the way the nginx image does at start and runs
       # `nginx -t` on it, with a throwaway self-signed certificate for SERVER_NAME.
       - name: Validate the production nginx config
         run: python3 scripts/check_nginx_config.py
+      # The quickstart compose is what a first-time visitor runs, without a checkout. Booting it on
+      # the image built above keeps it working with the next release: every service healthy, the
+      # seed runs, and a seeded account can log in.
+      - name: Boot the quickstart stack
+        env:
+          FASTKERN_IMAGE: fastkern:ci
+        run: |
+          qs() { docker compose -f docker-compose.quickstart.yml "$@"; }
+          qs up -d
+          for i in $(seq 1 60); do
+            [ -z "$(qs ps --format '{{.Health}}' | grep -v '^healthy$')" ] && break
+            sleep 3
+          done
+          qs ps
+          [ -z "$(qs ps --format '{{.Health}}' | grep -v '^healthy$')" ]
+          qs --profile tools run --rm seed
+          curl -sf -X POST http://localhost:8000/api/v1/auth/login \
+            -H 'content-type: application/json' \
+            -d '{"tenantId":"00000000-0000-0000-0000-000000000000","email":"admin@example.com","password":"ChangePlease123!"}' \
+            >/dev/null
+      - name: Quickstart stack logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.quickstart.yml logs --no-color || true
+      - name: Tear down the quickstart stack
+        if: always()
+        run: docker compose -f docker-compose.quickstart.yml down -v || true
 
   docker-e2e:
     # `docker-build` only BUILDS the image; nothing above ever RAN it, which is how a Dockerfile

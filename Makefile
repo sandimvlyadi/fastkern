@@ -1,6 +1,6 @@
 .PHONY: help install dev lint format typecheck test test-cov arch-check precommit \
         migrate migration downgrade seed run worker docker-up docker-dev docker-down docker-seed \
-        docker-seed-dev clean e2e e2e-ratelimit e2e-destructive
+        docker-seed-dev clean e2e e2e-ratelimit e2e-destructive docs docs-build
 
 help:
 	@echo "make install      - install dependencies via uv + install pre-commit hooks"
@@ -25,6 +25,8 @@ help:
 	@echo "make e2e          - end-to-end tests against the running, seeded stack"
 	@echo "make e2e-ratelimit- rate-limit e2e (restarts the api with tiny limits, then restores)"
 	@echo "make e2e-destructive - outage e2e (stops/starts redis and db)"
+	@echo "make docs         - preview the documentation site with live reload (port 8001)"
+	@echo "make docs-build   - build the documentation site into site/, failing on any warning"
 
 install:
 	uv sync --all-groups
@@ -128,6 +130,14 @@ e2e-destructive:
 e2e-clamav:
 	uv run pytest -m e2e_clamav tests/e2e --no-cov
 
+# --- Documentation site (docs/, mkdocs.yml) ---------------------------------
+# Port 8001: `make dev` and the compose stack already use 8000.
+docs:
+	uv run zensical serve -a localhost:8001
+
+docs-build:
+	uv run zensical build --strict
+
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
-	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml
+	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml site .cache

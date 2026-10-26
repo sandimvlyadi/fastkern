@@ -7,6 +7,8 @@ API, observability and i18n already wired in and enforced by tooling.
 Start new services from it instead of rebuilding the same infrastructure each time, and spend your
 effort on business modules.
 
+**Documentation:** <https://sandimvlyadi.github.io/fastkern/>
+
 ## Features
 
 **Architecture**
@@ -39,17 +41,21 @@ effort on business modules.
 - Structured JSON logs, OpenTelemetry tracing, Prometheus metrics, health and readiness probes
 - Unit, integration, PostgreSQL and end-to-end test suites; pre-commit with secret scanning
 
-## Quickstart
+## Getting started
 
-Requires Docker with Compose v2.
+Both paths need Docker with Compose v2.
+
+### Try it from the image
+
+No checkout and no build: the published image from GHCR with PostgreSQL, Redis and Mailpit.
 
 ```bash
-cp .env.example .env              # works as is locally; change SECRET_KEY before deploying
-docker compose up -d --build      # PostgreSQL, Redis, Mailpit, API, worker, beat
-docker compose --profile tools run --rm seed   # baseline tenant, roles and users
+curl -fsSLO https://raw.githubusercontent.com/sandimvlyadi/fastkern/main/docker-compose.quickstart.yml
+docker compose -f docker-compose.quickstart.yml up -d
+docker compose -f docker-compose.quickstart.yml --profile tools run --rm seed   # tenant, roles, users
 ```
 
-After about a minute `docker compose ps` shows every service as healthy, and:
+After about a minute every service is healthy, and:
 
 | | |
 |---|---|
@@ -58,8 +64,23 @@ After about a minute `docker compose ps` shows every service as healthy, and:
 | Metrics | http://localhost:8000/metrics |
 | Mailpit (outgoing email) | http://localhost:8025 |
 
-The API is served under `/api/v1`. To run the API on the host with hot reload instead, or the whole
-stack with hot reload, see [Development](./docs/development.md).
+The API is served under `/api/v1`. The seeded accounts, picking a release and cleaning up are in
+[Try it from the image](./docs/quickstart.md).
+
+### Build your service
+
+Create your own repository with **Use this template** (or fork), then run it from your checkout:
+
+```bash
+cp .env.example .env              # works as is locally; change SECRET_KEY before deploying
+make install                      # dependencies and pre-commit hooks (needs uv)
+docker compose up -d --build      # the whole stack, image built from your code
+docker compose --profile tools run --rm seed
+```
+
+[Build your service](./docs/new-service.md) covers what to rename, adding modules, publishing
+your own image and deploying it. [Development](./docs/development.md) has the other ways to run the
+stack, such as hot reload.
 
 ## Project layout
 
@@ -92,8 +113,13 @@ All targets are listed in [Development](./docs/development.md#make-targets).
 
 ## Documentation
 
+The guides below are also published as a site with search:
+<https://sandimvlyadi.github.io/fastkern/>.
+
 | Guide | |
 |---|---|
+| [Try it from the image](./docs/quickstart.md) | Run the published image locally without a checkout |
+| [Build your service](./docs/new-service.md) | From the template to a deployed release of your own service |
 | [Architecture](./docs/architecture.md) | Layers, modules, design principles, and the index of decisions (ADRs) |
 | [Development](./docs/development.md) | Ways to run the stack, make targets, email, pre-commit, adding a module |
 | [Module guide](./docs/module-guide.md) | Building a new module step by step |
