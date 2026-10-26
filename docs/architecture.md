@@ -104,3 +104,4 @@ constraints; add a new ADR for a new decision.
 | [0020](./adr/0020-partner-api-key-integration.md) | Partner API key integration |
 | [0021](./adr/0021-permission-and-scope-catalog-in-code.md) | Permission and scope catalog in code |
 | [0022](./adr/0022-container-image-publishing.md) | Container image publishing |
+| [0023](./adr/0023-single-host-deployment.md) | Reference deployment: one host with Compose and nginx |

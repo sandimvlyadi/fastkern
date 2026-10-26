@@ -24,7 +24,8 @@ and was unsafe:
   `EMAIL_HTTP_BASE_URL`, `EMAIL_HTTP_API_KEY`; secrets are `SecretStr`.
   **No code path may use `secret_key` for anything but signing tokens.**
 - **Production refuses `console`** and requires the credentials of the chosen backend
-  (`Settings._validate_email_settings`), like the `SECRET_KEY` guard.
+  (`Settings._validate_email_settings`), like the `SECRET_KEY` guard. (ADR 0023 adds an explicit
+  opt-in, `EMAIL_CONSOLE_IN_PRODUCTION=true`, for a deployment without a mail provider yet.)
 - **SMTP uses the standard library** (`smtplib` + `email.message.EmailMessage`) run through
   `asyncio.to_thread`, so it adds **no new dependency**. (`aiosmtplib` would be reasonable but
   needs its own ADR first, per CLAUDE.md §6.) TLS via STARTTLS or implicit SSL with a verifying

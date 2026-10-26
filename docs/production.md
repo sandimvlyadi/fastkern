@@ -11,7 +11,8 @@ with development defaults.
 - A weak or placeholder `SECRET_KEY`. Generate one with
   `python -c "import secrets; print(secrets.token_urlsafe(64))"`
 - A `*` in `CORS_ORIGINS`
-- `EMAIL_BACKEND=console`, or `smtp`/`http` without credentials
+- `EMAIL_BACKEND=console` without `EMAIL_CONSOLE_IN_PRODUCTION=true`, or `smtp`/`http` without
+  credentials
 
 **Refused by the seed script:** a missing or public-default `SEED_DEFAULT_PASSWORD`, a password
 shorter than 12 characters, or a missing `SEED_DEVELOPER_EMAIL`.
@@ -22,6 +23,9 @@ shorter than 12 characters, or a missing `SEED_DEVELOPER_EMAIL`.
   reverse proxy keeps `/metrics` off the public listener
 - Uploads without malware scanning (`uploads_not_malware_scanned`): set
   `MALWARE_SCAN_BACKEND=clamav` and run the `clamav` compose profile, or accept unscanned uploads
+- Log-only email (`email_not_delivered`), with `EMAIL_BACKEND=console` and
+  `EMAIL_CONSOLE_IN_PRODUCTION=true`: nothing is sent, the worker only logs the masked recipient
+  and the subject
 
 **Not checked, your responsibility:**
 
@@ -34,6 +38,13 @@ shorter than 12 characters, or a missing `SEED_DEVELOPER_EMAIL`.
 
 API documentation (`/docs`, `/redoc`, `/openapi.json`) is off in production by default. Set
 `DOCS_ENABLED=true` to keep it on an internal deployment.
+
+## Deploying on one server
+
+[Deploying to a VPS](./deploy-vps.md) runs the published image on a single host with
+`docker-compose.prod.yml` and nginx, and covers the first deploy, rollouts, rollbacks and backups.
+It takes care of `FORWARDED_ALLOW_IPS`, the single `beat`, the shared file volume and keeping
+`/metrics` off the public listener.
 
 ## Container images
 
@@ -71,8 +82,9 @@ Run migrations as an explicit deployment step, once, before the new version star
 alembic upgrade head
 ```
 
-The compose stack runs migrations when the API container starts. That is a local-development
-convenience, not a production deployment model.
+The development compose stack runs migrations when the API container starts. That is a
+local-development convenience, not a production deployment model. `docker-compose.prod.yml` runs
+them as a separate one-shot service instead (`run --rm migrate`).
 
 ## Rolling back
 

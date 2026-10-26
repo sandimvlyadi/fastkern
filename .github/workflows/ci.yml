@@ -193,12 +193,19 @@ jobs:
           fastkern:ci
       # Catches a broken compose file (including the dev override) before the e2e job boots it.
       # `develop.watch` needs Docker Compose 2.32.0+; if the runner's Compose is older, this step fails.
-      - name: Create .env from the template
-        run: cp .env.example .env
+      - name: Create .env and .env.production from the templates
+        run: |
+          cp .env.example .env
+          cp .env.production.example .env.production
       - name: Validate compose files
         run: |
           docker compose -f docker-compose.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+          docker compose -f docker-compose.prod.yml --env-file .env.production config --quiet
+      # Renders the production nginx template the way the nginx image does at start and runs
+      # `nginx -t` on it, with a throwaway self-signed certificate for SERVER_NAME.
+      - name: Validate the production nginx config
+        run: python3 scripts/check_nginx_config.py
 
   docker-e2e:
     # `docker-build` only BUILDS the image; nothing above ever RAN it, which is how a Dockerfile
@@ -220,9 +227,9 @@ jobs:
       - run: uv sync --all-groups
       - name: Create .env from the template
         run: cp .env.example .env
-      # docker-compose.yml already runs mailpit as part of the stack (publishing 1025/8025 to
-      # the runner), and the api/worker reach it via host.docker.internal:1025 — no separate
-      # mail catcher container needed here. Starting one manually used to be required before
+      # docker-compose.yml already runs mailpit as part of the stack (its API on the runner's
+      # localhost:8025), and the api/worker reach it as mailpit:1025 — no separate mail catcher
+      # container needed here. Starting one manually used to be required before
       # mailpit became a compose service; doing both now fights over the same host ports.
       - name: Start the stack
         run: $COMPOSE_E2E up -d --build
