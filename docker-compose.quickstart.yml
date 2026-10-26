@@ -1,0 +1,124 @@
+# Try fastkern from the published image, without cloning the repository or building anything:
+#
+#   curl -fsSLO https://raw.githubusercontent.com/sandimvlyadi/fastkern/main/docker-compose.quickstart.yml
+#   docker compose -f docker-compose.quickstart.yml up -d
+#   docker compose -f docker-compose.quickstart.yml --profile tools run --rm seed
+#
+# Standalone: it needs no .env file and is not layered on docker-compose.yml. It runs as
+# ENVIRONMENT=local with a public placeholder SECRET_KEY, so it is for trying the API on your own
+# machine only. For a server, use docker-compose.prod.yml.
+name: fastkern-quickstart
+
+# Every service built from the app image. FASTKERN_IMAGE picks another release, e.g.
+# FASTKERN_IMAGE=ghcr.io/sandimvlyadi/fastkern:0.3.0
+x-app: &app
+  image: ${FASTKERN_IMAGE:-ghcr.io/sandimvlyadi/fastkern:latest}
+  environment:
+    ENVIRONMENT: local
+    # Placeholder, accepted only outside staging/production: the app refuses to start with it there.
+    SECRET_KEY: quickstart-only-placeholder-not-a-secret-change-me
+    DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/fastkern
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    # Outgoing email (the welcome email on registration) lands in Mailpit at http://localhost:8025.
+    EMAIL_BACKEND: smtp
+    SMTP_HOST: mailpit
+    SMTP_PORT: "1025"
+    SMTP_STARTTLS: "false"
+  # Uploaded files live here; api, worker and beat must all see the same volume.
+  volumes:
+    - files_data:/app/data
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+# Published ports bind to 127.0.0.1 only: the database has a default password, Redis has none, and
+# Docker's port publishing bypasses host firewalls such as ufw.
+services:
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+    command: >
+      sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    <<: *app
+    command: celery -A app.core.celery_app worker --loglevel=info
+    # The image's HEALTHCHECK probes the API's /healthz; a worker serves no HTTP, so ping it
+    # through the broker instead (inspect ping -d targets only this container's node).
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A app.core.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # Periodic jobs. Exactly one beat per deployment: two would enqueue every periodic job twice.
+  beat:
+    <<: *app
+    # The schedule file goes to /tmp: the app user cannot write into /app.
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    # The image's HEALTHCHECK probes the API's /healthz, and beat serves no HTTP. Instead, check that
+    # a `celery ... beat` process is running. The pattern uses NUL bytes between argv entries, so the
+    # healthcheck's own command line does not match it.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import glob,sys; sys.exit(0 if any(b'celery\x00-A\x00app.core.celery_app\x00beat' in open(p,'rb').read() for p in glob.glob('/proc/[0-9]*/cmdline')) else 1)"
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # One-shot: the baseline tenant, roles and one user per role. Waits for the api, which runs the
+  # migrations on start, to be healthy first.
+  seed:
+    <<: *app
+    profiles: ["tools"]
+    command: python scripts/seed.py
+    depends_on:
+      api:
+        condition: service_healthy
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fastkern
+    volumes:
+      # Postgres 18+ images keep PGDATA in a major-version subdirectory (/var/lib/postgresql/18/docker)
+      # so a later `pg_upgrade --link` can see both versions; the volume therefore mounts one level up.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+volumes:
+  postgres_data:
+  files_data:
