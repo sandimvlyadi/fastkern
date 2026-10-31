@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Both stages use the same Python, pinned by digest so a rebuild is reproducible; Dependabot
 # (.github/dependabot.yml) proposes the new digest when the upstream image gets security fixes.
-FROM python:3.14-slim@sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1 AS base
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -22,7 +22,7 @@ COPY src ./src
 RUN uv sync --no-dev
 
 # ---------------------------------------------------------------------------
-FROM python:3.14-slim@sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1 AS runtime
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS runtime
 
 # The app runs from /app/.venv, so the base image's own pip is dead weight -- and its vendored
 # urllib3/msgpack show up in image CVE scans. Remove it rather than carry it.
