@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -54,7 +54,7 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -104,7 +104,7 @@ jobs:
       ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -155,7 +155,7 @@ jobs:
         with:
           fetch-depth: 0 # gitleaks-action diffs across the PR's commit range;
           # the default shallow clone doesn't have that history available.
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -262,7 +262,7 @@ jobs:
       COMPOSE_E2E: docker compose -f docker-compose.yml -f docker-compose.e2e.yml
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
@@ -325,7 +325,7 @@ jobs:
       COMPOSE_E2E: docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile clamav
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2: setup-uv publishes no floating major tag
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.2: setup-uv publishes no floating major tag
         with:
           version: "0.13.5"
       - run: uv sync --all-groups
